@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Code by @0xGeeLoko
 
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.17;
 // welcome to payroll distro
 // verision: Based
 // this contract is responsiple for managing bulk usdc tranfers
@@ -11,7 +11,7 @@ pragma solidity ^0.8.4;
 //...subname claim ny employee/contractor (resolved to other wallet)
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 //interfaces
 /*
@@ -24,15 +24,16 @@ interface IERC20{
 
 contract payrollDistro is Ownable, ReentrancyGuard {
 
+
     IERC20 USDC = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913); //base USDC
 
-
+    constructor() Ownable(msg.sender) {}
 
     mapping(bytes32 => uint256) public payeeBalance;
 
 
 
-    modifier isOverTotal (uint256[] calldata _amount) {
+    modifier isOverBalance (uint256[] calldata _amount, address _multiSig) {
         uint256 totalAmount;
         for (uint256 i; i < _amount.length; ) {
             totalAmount += _amount[i];
@@ -40,7 +41,7 @@ contract payrollDistro is Ownable, ReentrancyGuard {
                 i++;
             }
         }
-        require(totalSupply() + totalAmount <= 10000, "max supply hit");
+        require(USDC.balanceOf(_multiSig) >= (totalAmount), 'not enough tokens');
         _;
     }
 
@@ -49,9 +50,10 @@ contract payrollDistro is Ownable, ReentrancyGuard {
     //ccip read owners of subnames
     function getResolvedAddress (bytes32 _to)
     internal
+    pure
     returns (address)
     {
-        
+        return address(0);
     }
     
 
@@ -69,7 +71,7 @@ contract payrollDistro is Ownable, ReentrancyGuard {
     function updateBalanceERC20(bytes32 payee, uint256 _amount) 
         internal 
     {
-        payeeBalance[payee] += amount;
+        payeeBalance[payee] += _amount;
     }
 
 
@@ -81,7 +83,7 @@ contract payrollDistro is Ownable, ReentrancyGuard {
     //...otherwise payout usdc amount to claimed subname wallet
     function doPayroll (bytes32[] calldata _to, uint256[] calldata _amount, address _multiSig)
     external
-    isOverTotal(_amount)
+    isOverBalance(_amount, _multiSig)
     nonReentrant
     {
         require(_to.length == _amount.length, "payee/amount length mismatch");
@@ -95,7 +97,7 @@ contract payrollDistro is Ownable, ReentrancyGuard {
                 updateBalanceERC20(_to[i], _amount[i]);
             } else {
                 //pay to resolved address wallet   
-                tranferERC20(_multiSig, _to[i], _amount[i]);
+                tranferERC20(_multiSig, payee, _amount[i]);
             }
 
             unchecked {
@@ -114,10 +116,10 @@ contract payrollDistro is Ownable, ReentrancyGuard {
         address payee = getResolvedAddress(_to);
     
         require(payee != _multiSig, 'unclaimed subname, cannot pay!');
-        require(payeeBalance[payee] > 0, 'no outstandings!');
+        require(payeeBalance[_to] > 0, 'no outstandings!');
 
-        uint256 payeeBalanceERC20 = payeeBalance[payee];
-        payeeBalance[payee] = 0;
+        uint256 payeeBalanceERC20 = payeeBalance[_to];
+        payeeBalance[_to] = 0;
 
         (bool success, ) = payee.call{value: payeeBalanceERC20}(""); 
         require(success, "Transfer failed");
