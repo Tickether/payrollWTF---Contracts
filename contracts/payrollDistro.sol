@@ -31,7 +31,33 @@ contract payrollDistro is Ownable, ReentrancyGuard {
 
     mapping(bytes32 => uint256) public payeeBalance;
 
+     error OffchainLookup(address sender, string[] urls, bytes callData, bytes4 callbackFunction, bytes extraData);
 
+    //callback
+    function callback(bytes calldata response, bytes calldata extraData) internal returns(string memory) {
+       
+        string memory resolvedAddress = abi.decode(response, (string));
+        string memory node = abi.decode(extraData, (string));
+        return resolvedAddress;
+    }
+
+    // function CCIP Read
+    function queryResolvedAddress(bytes32 node) public {
+        // Define graph query
+        string memory queryFront = 'query {   domain(id: "';
+        string memory node = string(node);
+        string memory queryEnd = '") { resolvedAddress {id} }   }';
+        string memory fullQuery = string(abi.encodePacked(queryFront, node, queryEnd));
+
+        // Revert OffchainLookup
+        revert OffchainLookup(
+            address(this),  
+            ["https://api.thegraph.com/subgraphs/name/ensdomains/ens"],          
+            abi.encodeWithSelector(this.callback.selector),
+            this.callback.selector,  
+            abi.encode(fullQuery)  
+        );
+    }
 
     modifier isOverBalance (uint256[] calldata _amount, address _multiSig) {
         uint256 totalAmount;
